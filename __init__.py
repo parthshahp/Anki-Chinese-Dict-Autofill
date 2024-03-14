@@ -1,6 +1,6 @@
 from aqt import mw
 from aqt.utils import showInfo
-# from aqt.qt import *
+from aqt.qt import QAction
 # import aqt.editor
 from anki.hooks import addHook
 from .load_dict import load_dict

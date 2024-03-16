@@ -1,4 +1,5 @@
 {
     "definition_field" : "Definition",
-    "word_field" : "Target"
+    "word_field" : "Target",
+    "pinyin" : "Pinyin"
 }

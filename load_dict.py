@@ -29,12 +29,15 @@ with open(file_path, encoding="utf-8") as file:
         line = line.split('/')
         if len(line) <= 1:
             return 0
-        english = line[1]
+        # english = ";".join(line[1:])
+        english = line[1:]
         char_and_pinyin = line[0].split('[')
         characters = char_and_pinyin[0]
         characters = characters.split()
         traditional = characters[0]
         simplified = characters[1]
+        # if simplified == '贡献':
+        #     print(english)
         pinyin = char_and_pinyin[1]
         pinyin = pinyin.rstrip()
         pinyin = pinyin.rstrip("]")
@@ -81,5 +84,4 @@ with open(file_path, encoding="utf-8") as file:
 
 list_of_dicts = []
 # parsed_dict = load_dict()
-
-# print(parsed_dict[0:10])
+# print(type(parsed_dict["贡献"]['english']))

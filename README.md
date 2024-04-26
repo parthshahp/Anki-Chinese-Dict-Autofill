@@ -4,7 +4,7 @@ A very simple add-on that will allow you to automatically fill in your Chinese A
 
 ## Installation
 
-To install, download this repository into the plugins folder. The folder can be found by going to Tools -> Add-ons -> View Files.
+To install go [here](https://ankiweb.net/shared/info/1181718073).
 
 ## Config
 

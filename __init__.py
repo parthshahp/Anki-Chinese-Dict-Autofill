@@ -1,10 +1,10 @@
 # import aqt.editor
-from anki.hooks import addHook
-from aqt import mw
+from aqt import gui_hooks, mw
 from aqt.qt import QAction
 from aqt.utils import showInfo
 
 from .load_dict import load_dict
+from .utils import decode_pinyin, list_to_html_list
 
 assert mw is not None
 config = mw.addonManager.getConfig(__name__)
@@ -20,15 +20,24 @@ def onRegenerate(browser):
 
     if selected:
         # fields = anki.find.fieldNames(mw.col, selected)
+        errors = []
         for nid in selected:
             note = browser.col.get_note(nid)
+
             if not note[def_field]:
-                html = list_to_html_list(cc_dict[note[word_field]]["english"])
-                note[def_field] = html
+                try:
+                    definition = cc_dict[note[word_field]]["english"]
+                    note[def_field] = list_to_html_list(definition)
+                except:
+                    errors.append(note[word_field])
+
             if not note[reading_field]:
                 temp = cc_dict[note[word_field]]["pinyin"]
                 note[reading_field] = decode_pinyin(temp)
+
             browser.col.update_note(note)
+        if errors:
+            showInfo(f"Words not found: {errors}")
     else:
         showInfo("No notes selected")
 
@@ -41,16 +50,4 @@ def setupMenu(browser):
 
 
 cc_dict = load_dict()
-addHook("browser.setupMenus", setupMenu)
-
-
-def list_to_html_list(lst, ordered=False):
-    list_type = "ol" if ordered else "ul"
-    html_list = f"<{list_type}>"
-
-    for item in lst:
-        html_list += f"<li>{item}</li>"
-
-    html_list += f"</{list_type}>"
-
-    return html_list
+gui_hooks.browser_menus_did_init.append(setupMenu)

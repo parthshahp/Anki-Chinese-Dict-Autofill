@@ -1,5 +1,7 @@
 {
-    "definition_field" : "Definition",
-    "word_field" : "Target",
-    "pinyin" : "Pinyin"
+  "definition_field": "Definition",
+  "word_field": "Target",
+  "expression_field": "Expression",
+  "pinyin": "Pinyin",
+  "tone_coloring": "1"
 }

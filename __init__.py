@@ -13,6 +13,8 @@ assert config is not None
 def_field = config["definition_field"]
 word_field = config["word_field"]
 reading_field = config["pinyin"]
+tone_coloring = config["tone_coloring"]
+expression_field = config["expression_field"]
 
 
 def onRegenerate(browser):
@@ -33,7 +35,23 @@ def onRegenerate(browser):
 
             if not note[reading_field]:
                 temp = cc_dict[note[word_field]]["pinyin"]
-                note[reading_field] = decode_pinyin(temp)
+                note[reading_field], _ = decode_pinyin(temp)
+
+            if tone_coloring == "1":
+                new_expression = []
+                for i in range(len(note[expression_field])):
+                    if note[expression_field][i] in "，。、“”‘’《》？！：；{}[]()":
+                        new_expression.append(note[expression_field][i])
+                        continue
+
+                    temp = cc_dict[note[expression_field][i]]["pinyin"]
+                    _, tones = decode_pinyin(temp)
+
+                    new_expression.append(
+                        f"<span class='tone{tones[0]}'>{note[expression_field][i]}</span>"
+                    )
+
+                note[expression_field] = "".join(new_expression)
 
             browser.col.update_note(note)
         if errors:

@@ -10,6 +10,7 @@ PinyinToneMark = {
 
 
 def decode_pinyin(s):
+    tones = []
     s = s.lower()
     r = ""
     t = ""
@@ -45,10 +46,11 @@ def decode_pinyin(s):
                             t = t.replace("u", PinyinToneMark[tone][4])
                         else:
                             t += "!"
+                    tones.append(str(tone))
             r += t
             t = ""
     r += t
-    return r
+    return r, tones
 
 
 def list_to_html_list(lst, ordered=False):

@@ -17,47 +17,88 @@ tone_coloring = config["tone_coloring"]
 expression_field = config["expression_field"]
 
 
+def _sanitize_field(raw_value: str) -> str:
+    """Strip surrounding whitespace and normalize internal newlines."""
+
+    if not raw_value:
+        return ""
+
+    return raw_value.strip()
+
+
 def onRegenerate(browser):
     selected = browser.selectedNotes()
 
-    if selected:
-        # fields = anki.find.fieldNames(mw.col, selected)
-        errors = []
-        for nid in selected:
-            note = browser.col.get_note(nid)
-
-            if not note[def_field]:
-                try:
-                    definition = cc_dict[note[word_field]]["english"]
-                    note[def_field] = list_to_html_list(definition)
-                except:
-                    errors.append(note[word_field])
-
-            if not note[reading_field]:
-                temp = cc_dict[note[word_field]]["pinyin"]
-                note[reading_field], _ = decode_pinyin(temp)
-
-            if tone_coloring == "1":
-                new_expression = []
-                for i in range(len(note[expression_field])):
-                    if note[expression_field][i] in "，。、“”‘’《》？！：；{}[]()":
-                        new_expression.append(note[expression_field][i])
-                        continue
-
-                    temp = cc_dict[note[expression_field][i]]["pinyin"]
-                    _, tones = decode_pinyin(temp)
-
-                    new_expression.append(
-                        f"<span class='tone{tones[0]}'>{note[expression_field][i]}</span>"
-                    )
-
-                note[expression_field] = "".join(new_expression)
-
-            browser.col.update_note(note)
-        if errors:
-            showInfo(f"Words not found: {errors}")
-    else:
+    if not selected:
         showInfo("No notes selected")
+        return
+
+    errors = []
+    for nid in selected:
+        note = browser.col.get_note(nid)
+
+        original_word = note[word_field]
+        sanitized_word = _sanitize_field(original_word)
+
+        note_changed = False
+
+        if sanitized_word != original_word:
+            note[word_field] = sanitized_word
+            note_changed = True
+
+        if not sanitized_word:
+            errors.append(f"Note {nid}: empty value in '{word_field}'")
+            if note_changed:
+                browser.col.update_note(note)
+            continue
+
+        entry = cc_dict.get(sanitized_word)
+
+        if entry is None:
+            errors.append(f"Note {nid}: '{sanitized_word}' not found in dictionary")
+            if note_changed:
+                browser.col.update_note(note)
+            continue
+
+        if not note[def_field]:
+            note[def_field] = list_to_html_list(entry["english"])
+            note_changed = True
+
+        if not note[reading_field]:
+            reading, _ = decode_pinyin(entry["pinyin"])
+            note[reading_field] = reading
+            note_changed = True
+
+        if tone_coloring == "1" and note[expression_field]:
+            new_expression = []
+            for char in note[expression_field]:
+                if char in "，。、“”‘’《》？！：；{}[]()":
+                    new_expression.append(char)
+                    continue
+
+                char_entry = cc_dict.get(char)
+                if not char_entry:
+                    new_expression.append(char)
+                    continue
+
+                _, tones = decode_pinyin(char_entry["pinyin"])
+                if not tones:
+                    new_expression.append(char)
+                    continue
+
+                new_expression.append(f"<span class='tone{tones[0]}'>{char}</span>")
+
+            colored_expression = "".join(new_expression)
+            if colored_expression != note[expression_field]:
+                note[expression_field] = colored_expression
+                note_changed = True
+
+        if note_changed:
+            browser.col.update_note(note)
+
+    if errors:
+        formatted_errors = "\n".join(errors)
+        showInfo(f"Some notes could not be updated:\n{formatted_errors}")
 
 
 def setupMenu(browser):

@@ -24,4 +24,7 @@ To generate the definitions, go to card explorer and select the cards that need 
 ![image](https://github.com/parthshahp/Anki-Chinese-Dict-Autofill/assets/48393781/ffe53912-abf5-48e3-9ba4-164df07a5f63)
 
 
+The first time you run the generator it will parse CEDICT and write a cache (`cedict_cache.json`) alongside the dictionary file so future runs load instantly. Delete the cache if you replace `cedict_ts.u8` and the add-on will rebuild it automatically.
+
+
 (The name is a WIP)

@@ -1,4 +1,6 @@
 # import aqt.editor
+from typing import Dict, Optional
+
 from aqt import gui_hooks, mw
 from aqt.qt import QAction
 from aqt.utils import showInfo
@@ -18,6 +20,16 @@ expression_field = config["expression_field"]
 error_tag = (config.get("error_tag") or "").strip()
 
 
+cc_dict: Optional[Dict[str, Dict[str, object]]] = None
+
+
+def _get_cc_dict() -> Dict[str, Dict[str, object]]:
+    global cc_dict
+    if cc_dict is None:
+        cc_dict = load_dict()
+    return cc_dict
+
+
 def _sanitize_field(raw_value: str) -> str:
     """Strip surrounding whitespace and normalize internal newlines."""
 
@@ -32,6 +44,12 @@ def onRegenerate(browser):
 
     if not selected:
         showInfo("No notes selected")
+        return
+
+    try:
+        dictionary = _get_cc_dict()
+    except OSError as err:
+        showInfo(f"Failed to load dictionary: {err}")
         return
 
     errors = []
@@ -56,7 +74,7 @@ def onRegenerate(browser):
                 browser.col.update_note(note)
             continue
 
-        entry = cc_dict.get(sanitized_word)
+        entry = dictionary.get(sanitized_word)
 
         if entry is None:
             errors.append(f"Note {nid}: '{sanitized_word}' not found in dictionary")
@@ -83,7 +101,7 @@ def onRegenerate(browser):
                     new_expression.append(char)
                     continue
 
-                char_entry = cc_dict.get(char)
+                char_entry = dictionary.get(char)
                 if not char_entry:
                     new_expression.append(char)
                     continue

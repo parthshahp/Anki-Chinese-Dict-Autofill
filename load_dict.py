@@ -1,87 +1,135 @@
-#A parser for the CC-Cedict. Convert the Chinese-English dictionary into a list of python dictionaries with "traditional","simplified", "pinyin", and "english" keys.
+"""Utilities for loading the CC-CEDICT dataset with caching support."""
 
-#Make sure that the cedict_ts.u8 file is in the same folder as this file, and that the name matches the file name on line 13.
+from __future__ import annotations
 
-#Before starting, open the CEDICT text file and delete the copyright information at the top. Otherwise the program will try to parse it and you will get an error message.
-
-#Characters that are commonly used as surnames have two entries in CC-CEDICT. This program will remove the surname entry if there is another entry for the character. If you want to include the surnames, simply delete lines 59 and 60.
-
-#This code was written by Franki Allegra in February 2020.
-
-#open CEDICT file
-from os.path import dirname, join, abspath
-
-curr_dir = dirname(abspath(__file__))
-file_path = join(curr_dir, 'cedict_ts.u8')
-with open(file_path, encoding="utf-8") as file:
-    text = file.read()
-    lines = text.split('\n')
-    dict_lines = list(lines)
-
-#define functions
-
-    def parse_line(line):
-        parsed = {}
-        if line == '':
-            dict_lines.remove(line)
-            return 0
-        line = line.rstrip('/')
-        line = line.split('/')
-        if len(line) <= 1:
-            return 0
-        # english = ";".join(line[1:])
-        english = line[1:]
-        char_and_pinyin = line[0].split('[')
-        characters = char_and_pinyin[0]
-        characters = characters.split()
-        traditional = characters[0]
-        simplified = characters[1]
-        # if simplified == '贡献':
-        #     print(english)
-        pinyin = char_and_pinyin[1]
-        pinyin = pinyin.rstrip()
-        pinyin = pinyin.rstrip("]")
-        parsed['traditional'] = traditional
-        parsed['simplified'] = simplified
-        parsed['pinyin'] = pinyin
-        parsed['english'] = english
-        list_of_dicts.append(parsed)
-
-    def remove_surnames():
-        for x in range(len(list_of_dicts)-1, -1, -1):
-            if "surname " in list_of_dicts[x]['english']:
-                if list_of_dicts[x]['traditional'] == list_of_dicts[x+1]['traditional']:
-                    list_of_dicts.pop(x)
-            
-    def load_dict():
-
-        #make each line into a dictionary
-        print("Parsing dictionary . . .")
-        for line in dict_lines:
-                parse_line(line)
-        
-        #remove entries for surnames from the data (optional):
-
-        print("Removing Surnames . . .")
-        remove_surnames()
-
-        # Turn list into dict of dicts
-
-        new_dict = {}
-        for entry in list_of_dicts:
-            new_dict[entry['simplified']] = entry
-
-        return new_dict
+import json
+import os
+import tempfile
+from os.path import abspath, dirname, join
+from typing import Dict, List, Optional
 
 
-        #If you want to save to a database as JSON objects, create a class Word in the Models file of your Django project:
+__all__ = ["load_dict"]
 
-        # print("Saving to database (this may take a few minutes) . . .")
-        # for one_dict in list_of_dicts:
-        #     new_word = Word(traditional = one_dict["traditional"], simplified = one_dict["simplified"], english = one_dict["english"], pinyin = one_dict["pinyin"], hsk = one_dict["hsk"])
-        #     new_word.save()
-        print('Done!')
+CEDICT_FILENAME = "cedict_ts.u8"
+CACHE_FILENAME = "cedict_cache.json"
+_BASE_DIR = dirname(abspath(__file__))
 
-list_of_dicts = []
-# parsed_dict = load_dict()
-# print(type(parsed_dict["贡献"]['english']))
+
+def _source_path() -> str:
+    return join(_BASE_DIR, CEDICT_FILENAME)
+
+
+def _cache_path() -> str:
+    return join(_BASE_DIR, CACHE_FILENAME)
+
+
+def _source_metadata(path: str) -> Dict[str, int]:
+    stat = os.stat(path)
+    return {"mtime_ns": stat.st_mtime_ns, "size": stat.st_size}
+
+
+def _load_cache(cache_path: str, expected_meta: Dict[str, int]) -> Optional[Dict[str, Dict[str, object]]]:
+    if not os.path.exists(cache_path):
+        return None
+
+    try:
+        with open(cache_path, "r", encoding="utf-8") as cache_file:
+            payload = json.load(cache_file)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+    metadata = payload.get("metadata")
+    data = payload.get("data")
+
+    if not isinstance(metadata, dict) or not isinstance(data, dict):
+        return None
+
+    if metadata.get("mtime_ns") != expected_meta["mtime_ns"] or metadata.get("size") != expected_meta["size"]:
+        return None
+
+    return data
+
+
+def _write_cache(cache_path: str, data: Dict[str, Dict[str, object]], metadata: Dict[str, int]) -> None:
+    payload = {"metadata": metadata, "data": data}
+    os.makedirs(dirname(cache_path), exist_ok=True)
+
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=_BASE_DIR, delete=False) as temp_file:
+        json.dump(payload, temp_file)
+        temp_name = temp_file.name
+
+    os.replace(temp_name, cache_path)
+
+
+def _parse_line(line: str) -> Optional[Dict[str, object]]:
+    line = line.strip()
+    if not line or line.startswith("#"):
+        return None
+
+    parts = line.rstrip("/").split("/")
+    if len(parts) <= 1:
+        return None
+
+    char_and_pinyin = parts[0].split("[")
+    if len(char_and_pinyin) != 2:
+        return None
+
+    characters = char_and_pinyin[0].strip().split()
+    if len(characters) < 2:
+        return None
+
+    pinyin = char_and_pinyin[1].rstrip().rstrip("]")
+    english_entries = [entry for entry in parts[1:] if entry]
+
+    return {
+        "traditional": characters[0],
+        "simplified": characters[1],
+        "pinyin": pinyin,
+        "english": english_entries,
+    }
+
+
+def _remove_surnames(entries: List[Dict[str, object]]) -> None:
+    for idx in range(len(entries) - 1, -1, -1):
+        english_entries = entries[idx].get("english", [])
+        if not isinstance(english_entries, list):
+            continue
+
+        if any(str(item).startswith("surname ") for item in english_entries):
+            next_idx = idx + 1
+            if next_idx < len(entries) and entries[idx]["traditional"] == entries[next_idx]["traditional"]:
+                entries.pop(idx)
+
+
+def _build_dictionary(raw_path: str) -> Dict[str, Dict[str, object]]:
+    entries: List[Dict[str, object]] = []
+    with open(raw_path, encoding="utf-8") as cedict_file:
+        for raw_line in cedict_file:
+            parsed = _parse_line(raw_line)
+            if parsed:
+                entries.append(parsed)
+
+    _remove_surnames(entries)
+
+    dictionary: Dict[str, Dict[str, object]] = {}
+    for entry in entries:
+        dictionary[entry["simplified"]] = entry
+
+    return dictionary
+
+
+def load_dict() -> Dict[str, Dict[str, object]]:
+    """Load the CC-CEDICT dictionary, caching the parsed output on disk."""
+
+    source_path = _source_path()
+    metadata = _source_metadata(source_path)
+    cache_path = _cache_path()
+
+    cached = _load_cache(cache_path, metadata)
+    if cached is not None:
+        return cached
+
+    dictionary = _build_dictionary(source_path)
+    _write_cache(cache_path, dictionary, metadata)
+    return dictionary

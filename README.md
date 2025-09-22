@@ -11,8 +11,12 @@ To install go [here](https://ankiweb.net/shared/info/1181718073).
 To configure settings, go to Tools -> Add-ons -> Select this add-on and click Config. It should look like this:
 ```
 {
-    "definition_field": "Definition", 
-    "word_field": "Target"
+    "definition_field": "Definition",
+    "word_field": "Target",
+    "expression_field": "Expression",
+    "pinyin": "Pinyin",
+    "tone_coloring": "1",
+    "error_tag": "AutofillError"
 }
 ```
 To generate the definitions, go to card explorer and select the cards that need the definitions filled in. Once selected, go to 'Edit', then 'Generate Chinese Definitions' in the top bar.

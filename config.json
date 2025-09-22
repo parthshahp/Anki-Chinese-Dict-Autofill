@@ -3,5 +3,6 @@
   "word_field": "Target",
   "expression_field": "Expression",
   "pinyin": "Pinyin",
-  "tone_coloring": "1"
+  "tone_coloring": "1",
+  "error_tag": "AutofillError"
 }

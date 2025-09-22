@@ -15,6 +15,7 @@ word_field = config["word_field"]
 reading_field = config["pinyin"]
 tone_coloring = config["tone_coloring"]
 expression_field = config["expression_field"]
+error_tag = (config.get("error_tag") or "").strip()
 
 
 def _sanitize_field(raw_value: str) -> str:
@@ -48,6 +49,9 @@ def onRegenerate(browser):
 
         if not sanitized_word:
             errors.append(f"Note {nid}: empty value in '{word_field}'")
+            if error_tag:
+                note.addTag(error_tag)
+                note_changed = True
             if note_changed:
                 browser.col.update_note(note)
             continue
@@ -56,6 +60,9 @@ def onRegenerate(browser):
 
         if entry is None:
             errors.append(f"Note {nid}: '{sanitized_word}' not found in dictionary")
+            if error_tag:
+                note.addTag(error_tag)
+                note_changed = True
             if note_changed:
                 browser.col.update_note(note)
             continue

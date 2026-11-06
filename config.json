@@ -4,5 +4,7 @@
   "expression_field": "Expression",
   "pinyin": "Pinyin",
   "tone_coloring": "1",
-  "error_tag": "AutofillError"
+  "error_tag": "AutofillError",
+  "auto_fill_on_add": false,
+  "auto_fill_note_types": []
 }

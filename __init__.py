@@ -1,26 +1,26 @@
-# import aqt.editor
+"""Anki integration for manual and on-add Chinese dictionary autofill."""
+
+import logging
 from typing import Dict, Optional
 
+from anki.hooks import note_will_be_added
 from aqt import gui_hooks, mw
 from aqt.qt import QAction
 from aqt.utils import showInfo
 
+from .autofill import autofill_note
 from .load_dict import load_dict
-from .utils import decode_pinyin, list_to_html_list
-
-assert mw is not None
-config = mw.addonManager.getConfig(__name__)
-
-assert config is not None
-def_field = config["definition_field"]
-word_field = config["word_field"]
-reading_field = config["pinyin"]
-tone_coloring = config["tone_coloring"]
-expression_field = config["expression_field"]
-error_tag = (config.get("error_tag") or "").strip()
 
 
+logger = logging.getLogger(__name__)
 cc_dict: Optional[Dict[str, Dict[str, object]]] = None
+
+
+def _get_config():
+    # Read on each operation so changes in Tools > Add-ons apply immediately.
+    if mw is None:
+        return {}
+    return mw.addonManager.getConfig(__name__) or {}
 
 
 def _get_cc_dict() -> Dict[str, Dict[str, object]]:
@@ -30,96 +30,52 @@ def _get_cc_dict() -> Dict[str, Dict[str, object]]:
     return cc_dict
 
 
-def _sanitize_field(raw_value: str) -> str:
-    """Strip surrounding whitespace and normalize internal newlines."""
+def auto_fill_on_add(col, note, deck_id):
+    """Enrich an unsaved note without blocking note creation on failure."""
+    config = _get_config()
+    if config.get("auto_fill_on_add", False) is not True:
+        return
+    allowed_types = config.get("auto_fill_note_types", [])
+    if not isinstance(allowed_types, list):
+        return
+    if note.note_type()["name"] not in allowed_types:
+        return
+    if not all(config.get(key) in note for key in ("word_field", "definition_field")):
+        return
 
-    if not raw_value:
-        return ""
-
-    return raw_value.strip()
+    try:
+        result = autofill_note(note, _get_cc_dict(), config)
+        if result.error:
+            logger.warning("Chinese autofill: %s", result.error)
+    except Exception:
+        # Exceptions escaping this hook would cause AnkiConnect exports to fail.
+        logger.exception("Chinese autofill failed; saving note without autofill")
+        error_tag = (config.get("error_tag") or "").strip()
+        if error_tag:
+            note.add_tag(error_tag)
 
 
 def onRegenerate(browser):
     selected = browser.selectedNotes()
-
     if not selected:
         showInfo("No notes selected")
         return
 
     try:
         dictionary = _get_cc_dict()
-    except OSError as err:
+    except (OSError, ValueError) as err:
         showInfo(f"Failed to load dictionary: {err}")
         return
 
+    config = _get_config()
     errors = []
     for nid in selected:
         note = browser.col.get_note(nid)
-
-        original_word = note[word_field]
-        sanitized_word = _sanitize_field(original_word)
-
-        note_changed = False
-
-        if sanitized_word != original_word:
-            note[word_field] = sanitized_word
-            note_changed = True
-
-        if not sanitized_word:
-            errors.append(f"Note {nid}: empty value in '{word_field}'")
-            if error_tag:
-                note.addTag(error_tag)
-                note_changed = True
-            if note_changed:
-                browser.col.update_note(note)
-            continue
-
-        entry = dictionary.get(sanitized_word)
-
-        if entry is None:
-            errors.append(f"Note {nid}: '{sanitized_word}' not found in dictionary")
-            if error_tag:
-                note.addTag(error_tag)
-                note_changed = True
-            if note_changed:
-                browser.col.update_note(note)
-            continue
-
-        if not note[def_field]:
-            note[def_field] = list_to_html_list(entry["english"])
-            note_changed = True
-
-        if not note[reading_field]:
-            reading, _ = decode_pinyin(entry["pinyin"])
-            note[reading_field] = reading
-            note_changed = True
-
-        if tone_coloring == "1" and note[expression_field]:
-            new_expression = []
-            for char in note[expression_field]:
-                if char in "，。、“”‘’《》？！：；{}[]()":
-                    new_expression.append(char)
-                    continue
-
-                char_entry = dictionary.get(char)
-                if not char_entry:
-                    new_expression.append(char)
-                    continue
-
-                _, tones = decode_pinyin(char_entry["pinyin"])
-                if not tones:
-                    new_expression.append(char)
-                    continue
-
-                new_expression.append(f"<span class='tone{tones[0]}'>{char}</span>")
-
-            colored_expression = "".join(new_expression)
-            if colored_expression != note[expression_field]:
-                note[expression_field] = colored_expression
-                note_changed = True
-
-        if note_changed:
+        result = autofill_note(note, dictionary, config, manual=True)
+        if result.changed:
             browser.col.update_note(note)
+        if result.error:
+            errors.append(f"Note {nid}: {result.error}")
 
     if errors:
         formatted_errors = "\n".join(errors)
@@ -127,11 +83,11 @@ def onRegenerate(browser):
 
 
 def setupMenu(browser):
-    a = QAction("Generate Chinese Readings", browser)
-    a.triggered.connect(lambda: onRegenerate(browser))
+    action = QAction("Generate Chinese Readings", browser)
+    action.triggered.connect(lambda: onRegenerate(browser))
     browser.form.menuEdit.addSeparator()
-    browser.form.menuEdit.addAction(a)
+    browser.form.menuEdit.addAction(action)
 
 
-cc_dict = load_dict()
+note_will_be_added.append(auto_fill_on_add)
 gui_hooks.browser_menus_did_init.append(setupMenu)
